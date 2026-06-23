@@ -9,7 +9,15 @@ const userSchema = new mongoose.Schema(
     role:     { type: String, enum: ['admin', 'member'], default: 'member' },
     avatar:   { type: String, default: '' },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+    toJSON: {
+      transform: function (doc, ret) {
+        delete ret.password;
+        return ret;
+      },
+    },
+  }
 );
 
 userSchema.pre('save', async function () {
@@ -21,11 +29,6 @@ userSchema.methods.comparePassword = function (candidate) {
   return bcrypt.compare(candidate, this.password);
 };
 
-// Strip password from all JSON outputs
-userSchema.methods.toJSON = function () {
-  const obj = this.toObject();
-  delete obj.password;
-  return obj;
-};
+const User = mongoose.models.User || mongoose.model('User', userSchema);
 
-export default mongoose.model('User', userSchema);
+export default User;

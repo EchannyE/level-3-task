@@ -1,5 +1,6 @@
 import * as authService from '../services/auth.service.js';
 import { successResponse } from '../utils/response.util.js';
+import User from '../models/user.model.js';
 
 export const register = async (req, res, next) => {
   try {
@@ -30,4 +31,16 @@ export const getMe = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+};
+
+export const searchUser = async (req, res, next) => {
+  try {
+    const { email } = req.query;
+    if (!email) return res.status(400).json({ success: false, message: 'Email required' });
+
+    const user = await User.findOne({ email: email.toLowerCase() }).select('name email avatar role');
+    if (!user) return res.status(404).json({ success: false, message: 'No user found with that email' });
+
+    successResponse(res, 200, 'User found', { user });
+  } catch (error) { next(error); }
 };

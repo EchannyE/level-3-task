@@ -5,32 +5,53 @@ let io;
 
 export const initSocket = (server) => {
   io = new Server(server, {
-    cors: { origin: process.env.CLIENT_URL, credentials: true },
+    cors: {
+      origin: process.env.CLIENT_URL,
+      credentials: true,
+    },
   });
 
-  // Socket auth middleware — reuses the same JWT strategy
   io.use((socket, next) => {
-    const token = socket.handshake.auth?.token;
-    if (!token) return next(new Error('Authentication error: no token'));
+    try {
+      const token = socket.handshake.auth?.token;
 
-    const decoded = verifyToken(token);
-    if (!decoded) return next(new Error('Authentication error: invalid token'));
+      if (!token) {
+        return next(new Error('Authentication error: no token'));
+      }
 
-    socket.user = decoded; // attach user payload to socket
-    next();
+      const decoded = verifyToken(token);
+
+      if (!decoded) {
+        return next(new Error('Authentication error: invalid token'));
+      }
+
+      socket.user = decoded;
+      next();
+    } catch (error) {
+      next(new Error('Authentication failed'));
+    }
   });
 
   io.on('connection', (socket) => {
-    console.log(`⚡ Connected: ${socket.user.name} [${socket.user.id}]`);
+    const userId = String(socket.user.id);
 
-    // Each user joins a personal room for targeted notifications
-    socket.join(`user:${socket.user.id}`);
+    socket.join(`user:${userId}`);
 
-    // Client emits this when entering a project page
+    console.log(
+      `⚡ Connected: ${socket.user.name} | room=user:${userId}`
+    );
+
     socket.on('join:project', (projectId) => {
-      socket.join(`project:${projectId}`);
-      socket.to(`project:${projectId}`).emit('user:joined', {
-        userId: socket.user.id,
+      const room = `project:${projectId}`;
+
+      socket.join(room);
+
+      console.log(
+        `🚪 ${socket.user.name} joined ${room}`
+      );
+
+      socket.to(room).emit('user:joined', {
+        userId,
         name: socket.user.name,
       });
     });
@@ -40,15 +61,49 @@ export const initSocket = (server) => {
     });
 
     socket.on('disconnect', () => {
-      console.log(`❌ Disconnected: ${socket.user.name}`);
+      console.log(
+        `❌ Disconnected: ${socket.user.name}`
+      );
     });
   });
 
   return io;
 };
 
-// Exported so services can emit from anywhere in the app
 export const getIO = () => {
-  if (!io) throw new Error('Socket.io not initialized');
+  if (!io) {
+    throw new Error('Socket.io not initialized');
+  }
+
   return io;
+};
+
+export const emitTaskCreated = (projectId, task) => {
+  io.to(`project:${projectId}`).emit('task:created', task);
+};
+
+export const emitTaskUpdated = (projectId, task) => {
+  io.to(`project:${projectId}`).emit('task:updated', task);
+};
+
+export const emitTaskDeleted = (projectId, taskId) => {
+  io.to(`project:${projectId}`).emit('task:deleted', {
+    taskId,
+  });
+};
+
+export const emitNotification = (userId, notification) => {
+  io.to(`user:${userId}`).emit('notification', {
+    id: crypto.randomUUID(),
+    createdAt: Date.now(),
+    read: false,
+    ...notification,
+  });
+};
+
+export const emitMessage = (projectId, message) => {
+  io.to(`project:${projectId}`).emit(
+    'message:new',
+    message
+  );
 };
